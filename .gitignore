@@ -7,3 +7,9 @@ firmware/.settings/org.eclipse.cdt.managedbuilder.core.prefs
 firmware/.settings/language.settings.xml
 firmware/.settings/com.atollic.truestudio.debug.hardware_device.prefs
 firmware/.code_review_properties
+powersupply.b#1
+powersupply.b#2
+powersupply.s#1
+powersupply.s#2
+firmware/smart_pwr_supply.elf.launch
+firmware/smart_pwr_supply.elf.launch
