@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="9.3.0">
+<eagle version="9.5.2">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -27644,7 +27644,7 @@ You are welcome to use this library for commercial purposes. For attribution, we
 <part name="PWR_BT-" library="wirepad" library_urn="urn:adsk.eagle:library:412" deviceset="1,6/0,8" device="" package3d_urn="urn:adsk.eagle:package:30830/1"/>
 <part name="+5VHUB" library="wirepad" library_urn="urn:adsk.eagle:library:412" deviceset="1,6/0,8" device="" package3d_urn="urn:adsk.eagle:package:30830/1"/>
 <part name="GNDHUB" library="wirepad" library_urn="urn:adsk.eagle:library:412" deviceset="1,6/0,8" device="" package3d_urn="urn:adsk.eagle:package:30830/1"/>
-<part name="R9" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="10K"/>
+<part name="R9" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="120"/>
 <part name="I2C" library="con-molex" library_urn="urn:adsk.eagle:library:165" deviceset="53?-04" device="047" package3d_urn="urn:adsk.eagle:package:8078513/1" value="i2c"/>
 <part name="FAN2" library="con-molex" library_urn="urn:adsk.eagle:library:165" deviceset="53?-02" device="047" package3d_urn="urn:adsk.eagle:package:8078511/1"/>
 <part name="D2" library="diode" library_urn="urn:adsk.eagle:library:210" deviceset="DIODE-" device="SOD323-W" package3d_urn="urn:adsk.eagle:package:43418/1"/>
@@ -27709,10 +27709,10 @@ You are welcome to use this library for commercial purposes. For attribution, we
 <part name="C19" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="C1206" package3d_urn="urn:adsk.eagle:package:23618/2" value="47uF">
 <attribute name="MPN" value="CL31A476MPHNNNE"/>
 </part>
-<part name="R13" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="22.1K">
+<part name="R13" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="124K">
 <attribute name="MPN" value="TR0805B22K1P0525Z"/>
 </part>
-<part name="R14" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="124K">
+<part name="R14" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="22.1К">
 <attribute name="MPN" value="AR05BTCW1253"/>
 </part>
 <part name="R15" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="10k"/>
@@ -27728,7 +27728,10 @@ You are welcome to use this library for commercial purposes. For attribution, we
 <sheets>
 <sheet>
 <plain>
-<text x="123.19" y="128.27" size="1.778" layer="91">R1 = R2 x (VOUT - VFB) / VFB</text>
+<text x="138.43" y="158.75" size="1.778" layer="91">R1 = R2 x (VOUT - VFB) / VFB</text>
+<text x="139.7" y="149.86" size="1.778" layer="91">1.0 - INITIAL RELEASE
+1.1 - FIXED R9 FROM 10K TO 120Ohm
+        SWAP R13 and R14 nominal</text>
 </plain>
 <instances>
 <instance part="D1" gate="G$1" x="-68.58" y="40.64" smashed="yes">
@@ -29006,6 +29009,10 @@ You are welcome to use this library for commercial purposes. For attribution, we
 </schematic>
 </drawing>
 <compatibility>
+<note version="6.3" minversion="6.2.2" severity="warning">
+Since Version 6.2.2 text objects can contain more than one line,
+which will not be processed correctly with this version.
+</note>
 <note version="8.2" severity="warning">
 Since Version 8.2, EAGLE supports online libraries. The ids
 of those online libraries will not be understood (or retained)

@@ -5006,7 +5006,7 @@ design rules under a new name.</description>
 <element name="GNDHUB" library="wirepad" library_urn="urn:adsk.eagle:library:412" package="1,6/0,8" package3d_urn="urn:adsk.eagle:package:30830/1" value="" x="22.8" y="13.54" smashed="yes">
 <attribute name="VALUE" x="22.8" y="14.14" size="0.0254" layer="27"/>
 </element>
-<element name="R9" library="rcl" library_urn="urn:adsk.eagle:library:334" package="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="10K" x="16.51" y="40.64" smashed="yes">
+<element name="R9" library="rcl" library_urn="urn:adsk.eagle:library:334" package="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="120" x="16.51" y="40.64" smashed="yes">
 <attribute name="SPICEPREFIX" value="R" x="16.51" y="40.64" size="1.778" layer="27" display="off"/>
 <attribute name="VALUE" x="15.24" y="41.91" size="1.016" layer="27"/>
 </element>
@@ -5212,12 +5212,12 @@ design rules under a new name.</description>
 <attribute name="SPICEPREFIX" value="C" x="17.242" y="4.965" size="1.778" layer="27" display="off"/>
 <attribute name="VALUE" x="15.612" y="2.935" size="1.016" layer="27"/>
 </element>
-<element name="R13" library="rcl" library_urn="urn:adsk.eagle:library:334" package="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="22.1K" x="3.757" y="17.413" smashed="yes" rot="R90">
+<element name="R13" library="rcl" library_urn="urn:adsk.eagle:library:334" package="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="124K" x="3.757" y="17.413" smashed="yes" rot="R90">
 <attribute name="MPN" value="TR0805B22K1P0525Z" x="3.757" y="17.413" size="1.778" layer="27" rot="R90" display="off"/>
 <attribute name="SPICEPREFIX" value="R" x="-2.593" y="17.413" size="1.778" layer="27" rot="R90" display="off"/>
 <attribute name="VALUE" x="1.763" y="19.917" size="1.016" layer="27" rot="R270"/>
 </element>
-<element name="R14" library="rcl" library_urn="urn:adsk.eagle:library:334" package="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="124K" x="2.831" y="13.481" smashed="yes">
+<element name="R14" library="rcl" library_urn="urn:adsk.eagle:library:334" package="M0805" package3d_urn="urn:adsk.eagle:package:23556/2" value="22.1К" x="2.831" y="13.481" smashed="yes">
 <attribute name="MPN" value="AR05BTCW1253" x="2.831" y="13.481" size="1.778" layer="27" display="off"/>
 <attribute name="SPICEPREFIX" value="R" x="2.831" y="7.131" size="1.778" layer="27" display="off"/>
 <attribute name="VALUE" x="0.571" y="14.301" size="1.016" layer="27"/>
