@@ -26,7 +26,11 @@
 #include "arm_math.h"
 #include "stdlib.h"
 #include <stdbool.h>
-
+#include "ssd1306.h"
+#include "fonts.h"
+#include "tm_stm32_delay.h"
+#include "tm_stm32_ds18b20.h"
+#include "tm_stm32_onewire.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,7 +40,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ACC_DIVIDER 4.85f
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,6 +55,9 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim14;
 
 /* USER CODE BEGIN PV */
+TM_OneWire_t OW;
+
+uint8_t DS_ROM[8];
 
 struct screen_str {
 	bool enabled;
@@ -61,7 +67,6 @@ struct acc_str {
 	bool enabled;
 	bool low;
 	uint16_t voltage;
-	float volt;
 	uint32_t time_to_suspend;
 	uint32_t time_to_shutdown;
 };
@@ -69,6 +74,8 @@ struct acc_str {
 struct vim_str {
 	bool enabled;
 	bool sleep;
+	bool voltage;
+	float temp;
 };
 
 struct itps_str {
@@ -102,7 +109,7 @@ static void MX_ADC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint16_t readADC() {
-	uint16_t adc;
+	uint16_t adc = 0;
 	HAL_ADC_Start(&hadc); // запускаем преобразование сигнала АЦП
 	if (HAL_ADC_PollForConversion(&hadc, 100) != HAL_OK) {
 		Error_Handler();
@@ -114,7 +121,8 @@ uint16_t readADC() {
 }
 
 bool checkVIM() {
-	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == 1)
+	VIM.voltage = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
+	if (VIM.voltage == true)
 		return 1;
 	else
 		return 0;
@@ -197,18 +205,23 @@ void DisableHUB(bool force) {
 }
 
 void DisableITPS() {
-		HAL_GPIO_WritePin(SELF_PWR_GPIO_Port,SELF_PWR_Pin, GPIO_PIN_RESET);
-		ITPS.enabled=false;
+	HAL_GPIO_WritePin(SELF_PWR_GPIO_Port, SELF_PWR_Pin, GPIO_PIN_RESET);
+	ITPS.enabled = false;
 }
-
 
 void SuspendVIM() {
 	if (VIM.sleep == false) {
 		HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_SET);
-		HAL_Delay(500);
+		HAL_Delay(100);
 		HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_RESET);
 		VIM.sleep = true;
 	}
+}
+
+void ShutdownVIM() {
+	HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_SET);
+	HAL_Delay(3000);
+	HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_RESET);
 }
 
 void ResumeVIM() {
@@ -222,6 +235,15 @@ void ResumeVIM() {
 
 long map(long x, long in_min, long in_max, long out_min, long out_max) {
 	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void readtemp() {
+	if (TM_DS18B20_Is(DS_ROM))
+		/* Everything is done */
+		if (TM_DS18B20_AllDone(&OW))
+			/* Read temperature from device */
+			if (TM_DS18B20_Read(&OW, DS_ROM, &VIM.temp)) /* Temp read OK, CRC is OK */
+				TM_DS18B20_StartAll(&OW); /* Start again on all sensors */
 }
 /* USER CODE END 0 */
 
@@ -255,9 +277,30 @@ int main(void) {
 	MX_TIM14_Init();
 	MX_I2C1_Init();
 	MX_ADC_Init();
+
+	ssd1306_Init();
+	HAL_Delay(1000);
+	ssd1306_Fill(White);
+	ssd1306_UpdateScreen();
+	HAL_Delay(1000);
+	ssd1306_SetCursor(23, 23);
+	ssd1306_WriteString("4ilo", Font_7x10, Black);
+	ssd1306_UpdateScreen();
 	/* USER CODE BEGIN 2 */
 	HAL_ADC_Stop(&hadc);
 	HAL_ADCEx_Calibration_Start(&hadc);
+	TM_OneWire_Init(&OW, WIRE_GPIO_Port, WIRE_Pin);
+	if (TM_OneWire_First(&OW))
+		TM_OneWire_GetFullROM(&OW, DS_ROM);
+	if (TM_DS18B20_Is(DS_ROM)) {
+		/* Set resolution */
+		TM_DS18B20_SetResolution(&OW, DS_ROM, TM_DS18B20_Resolution_12bits);
+		/* Set high and low alarms */
+//		TM_DS18B20_SetAlarmHighTemperature(&OW, DS_ROM, 30);
+//		TM_DS18B20_SetAlarmLowTemperature(&OW, DS_ROM, 10);
+		/* Start conversion on all sensors */
+		TM_DS18B20_StartAll(&OW);
+	}
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -270,6 +313,8 @@ int main(void) {
 	VIM.sleep = false;
 	EnableScreen(false); //включается экран
 	HAL_Delay(2000); //Задержка 2сек
+	while (readADC() < 2814) {
+	}
 	EnableVIM(false); //затем включается VIM
 	//HAL_Delay(20000); //Задержка 20сек
 	HAL_Delay(2000); //Задержка 2сек
@@ -278,53 +323,52 @@ int main(void) {
 		//каждые 100МС
 		if (HAL_GetTick() >= next) {
 			ACC.voltage = readADC();
-			if (ACC.voltage < 600 && ACC.time_to_suspend == 0 && ACC.time_to_shutdown == 0) //проверка напряжения АСС. АСС выключено!
+			if (ACC.voltage < 3169 && ACC.time_to_suspend == 0
+					&& ACC.time_to_shutdown == 0) //проверка напряжения АСС. АСС выключено!
 							{
 				ACC.enabled = false;
 				ACC.low = true;
 				ACC.time_to_suspend = HAL_GetTick() + 10 * 1000; //через 10 секунд ПК должен уйти в сон
 				ACC.time_to_shutdown = ACC.time_to_suspend + 10 * 1000; //через 5 часов ПК отключается принудительно
 			}
-			if (ACC.voltage > 2814 && ACC.voltage < 3121) //проверка напряжения АСС. АСС =11-12.2V! СМ табличку перевода напряжения
-					{
-				ACC.enabled = true;
-				ACC.low = true;
-				ACC.time_to_suspend = HAL_GetTick() + 10 * 1000; //через 10 секунд ПК должен уйти в сон
-				ACC.time_to_shutdown = ACC.time_to_suspend + 10 * 1000; //через 5 часов ПК отключается принудительно
-			}
-			if (ACC.voltage > 3121) //проверка напряжения АСС. АСС >12.2V! СМ табличку перевода напряжения
+			if (ACC.voltage > 3169) //проверка напряжения АСС. АСС >12.2V! СМ табличку перевода напряжения
 					{
 				ACC.enabled = true;
 				ACC.low = false;
 				ACC.time_to_suspend = 0; //через 10 секунд ПК должен уйти в сон
 				ACC.time_to_shutdown = 0; //через 5 часов ПК отключается принудительно
 			}
-			ACC.volt = ACC.voltage * 3.3 / 4095 * ACC_DIVIDER;
 			next = HAL_GetTick() + 100;
 		}
 		if (HAL_GetTick() >= ACC.time_to_suspend && ACC.time_to_suspend != 0) {
 			SuspendVIM(false);
-			HAL_Delay(1000); //дается минута на переход в сон
+			HAL_Delay(5000); //дается 5 секунд на  переход в сон
 			DisableHUB(false);
-			HAL_Delay(500);
+			HAL_Delay(2000);
 			DisableScreen(false);
 		}
 		if (HAL_GetTick() >= ACC.time_to_shutdown
 				&& ACC.time_to_shutdown != 0) {
-			DisableVIM(false);
+			ShutdownVIM();
+			HAL_Delay(5 * 1000); //5 секунд на завершение работы
+			while (checkVIM()) { // проверяется состояние GPIO27 VIM'a. Если напряжение есть - значит не выключился. Пробуем еще раз
+				ShutdownVIM();
+				HAL_Delay(5 * 1000); //5 секунд на завершение работы
+			}
+			DisableVIM(false);	//отключается питание от VIM
 			HAL_Delay(2 * 1000);
 			DisableHUB(false);
 			HAL_Delay(1000);
 			DisableScreen(false);
 			HAL_Delay(1000);
-			DisableITPS();
+			DisableITPS();		//выключается питание всего
 
 		}
 		if (ACC.time_to_suspend == 0 && VIM.sleep == true) {
 			EnableScreen(false);
 			HAL_Delay(2 * 1000);
 			ResumeVIM(false);
-			HAL_Delay(2 * 1000);
+			HAL_Delay(4 * 1000); //просыпается примерно 3 секунды
 			EnableHUB(false);
 		}
 		if (ACC.time_to_shutdown == 0 && VIM.enabled == false) {
