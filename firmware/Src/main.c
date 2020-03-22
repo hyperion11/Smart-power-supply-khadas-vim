@@ -28,15 +28,15 @@
 #include <stdbool.h>
 #include "ssd1306.h"
 #include "fonts.h"
-#include "tm_stm32_delay.h"
-#include "tm_stm32_ds18b20.h"
-#include "tm_stm32_onewire.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 const uint8_t SUSPEND_TIME=10;
-const uint8_t SHUTDOWN_TIME=10;
+const uint8_t SHUTDOWN_TIME=30;
+const uint16_t SHUTDOWN_KEYPRESS_TIME=1000; //milliseconds
+const uint16_t SHUTDOWN_CHECK_INTERVAL=20; //seconds
+const uint8_t VIM_START_DELAY=10; //seconds
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -51,15 +51,10 @@ const uint8_t SHUTDOWN_TIME=10;
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
 
-I2C_HandleTypeDef hi2c1;
-
-TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim14;
+TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
-TM_OneWire_t OW;
 
-uint8_t DS_ROM[8];
 
 struct screen_str {
 	bool enabled;
@@ -77,7 +72,6 @@ struct vim_str {
 	bool enabled;
 	bool sleep;
 	bool voltage;
-	float temp;
 	uint8_t shutdown_count;
 };
 
@@ -96,16 +90,14 @@ struct hub_str HUB;
 struct acc_str ACC;
 
 uint32_t now, next;
-
+float t;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_TIM14_Init(void);
-static void MX_I2C1_Init(void);
 static void MX_ADC_Init(void);
-static void MX_TIM3_Init(void);
+static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -135,8 +127,8 @@ bool checkVIM() {
 void setPWM(uint16_t duty) {
 	if (duty >= 124)  // Max PWM dutycycle
 		duty = 124;
-	if (duty <= 10)
-		duty = 10; //Min PWM dutycycle
+	if (duty <= 0)
+		duty = 0; //Min PWM dutycycle
 	TIM3->CCR1 = duty;
 }
 
@@ -153,6 +145,7 @@ void EnableScreen(bool force) {
 
 void EnableVIM(bool force) {
 	if (VIM.enabled == false) {
+		HAL_GPIO_WritePin(FAN_GPIO_Port, FAN_Pin, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(PC_PWR_GPIO_Port, PC_PWR_Pin, GPIO_PIN_SET);
 		VIM.enabled = true;
 	}
@@ -186,11 +179,13 @@ void DisableScreen(bool force) {
 
 void DisableVIM(bool force) {
 	if (VIM.enabled == true) {
+		HAL_GPIO_WritePin(FAN_GPIO_Port, FAN_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(PC_PWR_GPIO_Port, PC_PWR_Pin, GPIO_PIN_RESET);
 		VIM.enabled = false;
 		VIM.sleep = false;
 	}
 	if (force) {
+		HAL_GPIO_WritePin(FAN_GPIO_Port, FAN_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(PC_PWR_GPIO_Port, PC_PWR_Pin, GPIO_PIN_RESET);
 		VIM.enabled = false;
 		VIM.sleep = false;
@@ -218,13 +213,14 @@ void SuspendVIM() {
 		HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_SET);
 		HAL_Delay(100);
 		HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(FAN_GPIO_Port, FAN_Pin, GPIO_PIN_RESET);
 		VIM.sleep = true;
 	}
 }
 
 void ShutdownVIM() {
 	HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_SET);
-	HAL_Delay(3000);
+	HAL_Delay(SHUTDOWN_KEYPRESS_TIME);
 	HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_RESET);
 }
 
@@ -241,14 +237,6 @@ long map(long x, long in_min, long in_max, long out_min, long out_max) {
 	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-void readtemp() {
-	if (TM_DS18B20_Is(DS_ROM))
-		/* Everything is done */
-		if (TM_DS18B20_AllDone(&OW))
-			/* Read temperature from device */
-			if (TM_DS18B20_Read(&OW, DS_ROM, &VIM.temp)) /* Temp read OK, CRC is OK */
-				TM_DS18B20_StartAll(&OW); /* Start again on all sensors */
-}
 /* USER CODE END 0 */
 
 /**
@@ -279,25 +267,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM14_Init();
-  MX_I2C1_Init();
   MX_ADC_Init();
-  MX_TIM3_Init();
+  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
+  	  RCC->APB2ENR |= RCC_APB2ENR_TIM16EN; //тактируем таймер
+  	  TIM16->CR1 |= TIM_CR1_CEN; //включаем
 	HAL_ADC_Stop(&hadc);
 	HAL_ADCEx_Calibration_Start(&hadc);
-	TM_OneWire_Init(&OW, WIRE_GPIO_Port, WIRE_Pin);
-	if (TM_OneWire_First(&OW))
-		TM_OneWire_GetFullROM(&OW, DS_ROM);
-	if (TM_DS18B20_Is(DS_ROM)) {
-		/* Set resolution */
-		TM_DS18B20_SetResolution(&OW, DS_ROM, TM_DS18B20_Resolution_12bits);
-		/* Set high and low alarms */
-//		TM_DS18B20_SetAlarmHighTemperature(&OW, DS_ROM, 30);
-//		TM_DS18B20_SetAlarmLowTemperature(&OW, DS_ROM, 10);
-		/* Start conversion on all sensors */
-		TM_DS18B20_StartAll(&OW);
-	}
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -309,24 +285,42 @@ int main(void)
 	SCREEN.enabled = false;
 	VIM.enabled = false;
 	VIM.sleep = false;
-	EnableScreen(false);
 	HAL_Delay(2000);
 	while (readADC() < 2814) {
 	}
-	EnableVIM(false);
+	EnableScreen(false);
+	HAL_Delay(VIM_START_DELAY*1000);
+	if (readADC() >2814)
+		EnableVIM(false);
+	else
+		DisableITPS();		//disable WHOLE Supply voltage
 	HAL_Delay(2000);
 	EnableHUB(false);
 	while (1) {
+		ACC.voltage = readADC();
 		//every 100ms
 		if (HAL_GetTick() >= next) {
 			ACC.voltage = readADC();
-			if (ACC.voltage < 3169 && ACC.time_to_suspend == 0
-					&& ACC.time_to_shutdown == 0) //ACC Voltage below 11v
-							{
-				ACC.enabled = false;
-				ACC.low = true;
-				ACC.time_to_suspend = HAL_GetTick() + SUSPEND_TIME * 1000; //10 seconds to suspend
-				ACC.time_to_shutdown = ACC.time_to_suspend + SHUTDOWN_TIME * 1000; //5 hours to shutdown
+			checkVIM();
+			if (ACC.voltage < 3169 && ACC.time_to_suspend == 0 && ACC.time_to_shutdown == 0) //ACC Voltage below 11v
+			{
+				if (VIM.enabled==false)
+				{
+					DisableVIM(false);	//disable VIM Supply voltage
+					HAL_Delay(10);
+					DisableHUB(false);	//disable HUB Supply voltage
+					HAL_Delay(10);
+					DisableScreen(false);
+					HAL_Delay(100);	//disable SCREEN Supply voltage
+					DisableITPS();		//disable WHOLE Supply voltage
+				}
+				else
+				{
+					ACC.enabled = false;
+					ACC.low = true;
+					ACC.time_to_suspend = HAL_GetTick() + SUSPEND_TIME * 1000; //10 seconds to suspend
+					ACC.time_to_shutdown = ACC.time_to_suspend + SHUTDOWN_TIME * 1000; //5 hours to shutdown
+				}
 			}
 			if (ACC.voltage > 3169) //if ACC voltage > 12.2V! cancel suspend an resume carpc
 					{
@@ -344,13 +338,14 @@ int main(void)
 			HAL_Delay(2000);
 			DisableScreen(false);
 		}
-		if (HAL_GetTick() >= ACC.time_to_shutdown
-				&& ACC.time_to_shutdown != 0) {
-			ShutdownVIM();
-			HAL_Delay(5 * 1000); //5 seconds to shutdown OS on vim
+		if (HAL_GetTick() >= ACC.time_to_shutdown && ACC.time_to_shutdown != 0) {
+			EnableScreen(false);
+			HAL_Delay(2 * 1000);
+			ShutdownVIM();  //VIM starts to resume from sleep
+			HAL_Delay(5 * 1000); //5 seconds to resuming
 			while (checkVIM()) { // checking voltage on GPIO27 VIM's pin.
 				ShutdownVIM();	// if still HIGH try shutdown again
-				HAL_Delay(5 * 1000); //5 seconds to shutdown OS on vim
+				HAL_Delay(SHUTDOWN_CHECK_INTERVAL * 1000); //~20 seconds to shutdown OS on vim
 				VIM.shutdown_count++;	//counter of shutdown tries
 				if (VIM.shutdown_count>5) // maximum 4 retries
 				{
@@ -358,6 +353,7 @@ int main(void)
 					break;
 				}
 			}
+			HAL_Delay(2 * 1000);
 			DisableVIM(false);	//disable VIM Supply voltage
 			HAL_Delay(2 * 1000);
 			DisableHUB(false);	//disable HUB Supply voltage
@@ -365,7 +361,6 @@ int main(void)
 			DisableScreen(false);
 			HAL_Delay(1000);	//disable SCREEN Supply voltage
 			DisableITPS();		//disable WHOLE Supply voltage
-
 		}
 		if (ACC.time_to_suspend == 0 && VIM.sleep == true) {
 			EnableScreen(false);
@@ -397,7 +392,6 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the CPU, AHB and APB busses clocks 
   */
@@ -423,12 +417,6 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1;
-  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_SYSCLK;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
@@ -487,128 +475,34 @@ static void MX_ADC_Init(void)
 }
 
 /**
-  * @brief I2C1 Initialization Function
+  * @brief TIM16 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_I2C1_Init(void)
+static void MX_TIM16_Init(void)
 {
 
-  /* USER CODE BEGIN I2C1_Init 0 */
+  /* USER CODE BEGIN TIM16_Init 0 */
 
-  /* USER CODE END I2C1_Init 0 */
+  /* USER CODE END TIM16_Init 0 */
 
-  /* USER CODE BEGIN I2C1_Init 1 */
+  /* USER CODE BEGIN TIM16_Init 1 */
 
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x20303E5D;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  /* USER CODE END TIM16_Init 1 */
+  htim16.Instance = TIM16;
+  htim16.Init.Prescaler = 0;
+  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim16.Init.Period = 65535;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Configure Analogue filter 
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure Digital filter 
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
+  /* USER CODE BEGIN TIM16_Init 2 */
 
-  /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM3_Init(void)
-{
-
-  /* USER CODE BEGIN TIM3_Init 0 */
-
-  /* USER CODE END TIM3_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM3_Init 1 */
-
-  /* USER CODE END TIM3_Init 1 */
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 47;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 124;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
-  HAL_TIM_MspPostInit(&htim3);
-
-}
-
-/**
-  * @brief TIM14 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM14_Init(void)
-{
-
-  /* USER CODE BEGIN TIM14_Init 0 */
-
-  /* USER CODE END TIM14_Init 0 */
-
-  /* USER CODE BEGIN TIM14_Init 1 */
-
-  /* USER CODE END TIM14_Init 1 */
-  htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 15;
-  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim14.Init.Period = 999;
-  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM14_Init 2 */
-
-  /* USER CODE END TIM14_Init 2 */
+  /* USER CODE END TIM16_Init 2 */
 
 }
 
@@ -630,7 +524,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOF, PC_PWR_Pin|SCREEN_PWR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, HUB_PWR_Pin|VIM_BTN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, HUB_PWR_Pin|VIM_BTN_Pin|FAN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SELF_PWR_GPIO_Port, SELF_PWR_Pin, GPIO_PIN_SET);
@@ -642,14 +536,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : BTN2_Pin VIM_IN_Pin BTN1_Pin WIRE_Pin */
-  GPIO_InitStruct.Pin = BTN2_Pin|VIM_IN_Pin|BTN1_Pin|WIRE_Pin;
+  /*Configure GPIO pins : BTN2_Pin VIM_IN_Pin BTN1_Pin */
+  GPIO_InitStruct.Pin = BTN2_Pin|VIM_IN_Pin|BTN1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : HUB_PWR_Pin VIM_BTN_Pin */
-  GPIO_InitStruct.Pin = HUB_PWR_Pin|VIM_BTN_Pin;
+  /*Configure GPIO pins : HUB_PWR_Pin VIM_BTN_Pin FAN_Pin */
+  GPIO_InitStruct.Pin = HUB_PWR_Pin|VIM_BTN_Pin|FAN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
