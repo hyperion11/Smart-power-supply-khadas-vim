@@ -51,8 +51,6 @@ const uint8_t VIM_START_DELAY=10; //seconds
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
 
-TIM_HandleTypeDef htim16;
-
 /* USER CODE BEGIN PV */
 
 
@@ -97,7 +95,6 @@ float t;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC_Init(void);
-static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -124,14 +121,6 @@ bool checkVIM() {
 		return 0;
 }
 
-void setPWM(uint16_t duty) {
-	if (duty >= 124)  // Max PWM dutycycle
-		duty = 124;
-	if (duty <= 0)
-		duty = 0; //Min PWM dutycycle
-	TIM3->CCR1 = duty;
-}
-
 void EnableScreen(bool force) {
 	if (SCREEN.enabled == false) {
 		HAL_GPIO_WritePin(SCREEN_PWR_GPIO_Port, SCREEN_PWR_Pin, GPIO_PIN_SET);
@@ -151,6 +140,7 @@ void EnableVIM(bool force) {
 	}
 	if (force) {
 		HAL_GPIO_WritePin(PC_PWR_GPIO_Port, PC_PWR_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(FAN_GPIO_Port, FAN_Pin, GPIO_PIN_SET);
 		VIM.enabled = true;
 	}
 }
@@ -230,6 +220,7 @@ void ResumeVIM() {
 		HAL_Delay(500);
 		HAL_GPIO_WritePin(VIM_BTN_GPIO_Port, VIM_BTN_Pin, GPIO_PIN_RESET);
 		VIM.sleep = false;
+		HAL_GPIO_WritePin(FAN_GPIO_Port, FAN_Pin, GPIO_PIN_SET);
 	}
 }
 
@@ -268,7 +259,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC_Init();
-  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
   	  RCC->APB2ENR |= RCC_APB2ENR_TIM16EN; //тактируем таймер
   	  TIM16->CR1 |= TIM_CR1_CEN; //включаем
@@ -471,38 +461,6 @@ static void MX_ADC_Init(void)
   /* USER CODE BEGIN ADC_Init 2 */
 
   /* USER CODE END ADC_Init 2 */
-
-}
-
-/**
-  * @brief TIM16 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM16_Init(void)
-{
-
-  /* USER CODE BEGIN TIM16_Init 0 */
-
-  /* USER CODE END TIM16_Init 0 */
-
-  /* USER CODE BEGIN TIM16_Init 1 */
-
-  /* USER CODE END TIM16_Init 1 */
-  htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 0;
-  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 65535;
-  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim16.Init.RepetitionCounter = 0;
-  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM16_Init 2 */
-
-  /* USER CODE END TIM16_Init 2 */
 
 }
 
